@@ -97,9 +97,10 @@ class SkillEnvironment:
             return True  # already up-to-date
 
         print("Installing Node.js dependencies...")
+        npm_cmd = ["npm.cmd", "install"] if os.name == "nt" else ["npm", "install"]
         try:
             result = subprocess.run(
-                ["npm", "install"],
+                npm_cmd,
                 cwd=str(self.skill_dir),
                 timeout=300,
             )

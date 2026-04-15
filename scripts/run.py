@@ -85,8 +85,9 @@ def ensure_node_deps():
         return  # up-to-date
 
     print("Installing Node.js dependencies...")
+    npm_cmd = ["npm.cmd", "install"] if os.name == "nt" else ["npm", "install"]
     try:
-        result = subprocess.run(["npm", "install"], cwd=str(skill_dir), timeout=300)
+        result = subprocess.run(npm_cmd, cwd=str(skill_dir), timeout=300)
     except FileNotFoundError:
         print("npm not found — please install Node.js")
         return
