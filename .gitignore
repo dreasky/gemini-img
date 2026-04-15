@@ -19,3 +19,5 @@ node_modules
 
 # 项目临时忽略
 api_doc
+package-lock.json
+storage_state.json
