@@ -1,4 +1,8 @@
-"""Selector constants and prompt quality suffix."""
+"""Selector constants, prompt quality suffix, and browser configuration."""
+
+from dataclasses import dataclass
+
+# ── CSS selectors ─────────────────────────────────────────────────────────────
 
 IMAGE_READY_SELECTOR   = 'button[data-test-id="download-generated-image-button"]'
 IMAGE_ELEMENT_SELECTOR = 'button.image-button img.image'
@@ -14,3 +18,15 @@ MAKE_IMAGE_CHIP_SEL    = (
 
 QUALITY_SUFFIX = ", ultra sharp, high definition, crystal clear details"
 GEMINI_URL     = "https://gemini.google.com/app"
+
+# ── Browser configuration ─────────────────────────────────────────────────────
+
+
+@dataclass
+class BrowserConfig:
+    """Runtime configuration for the headless browser generator."""
+
+    headless:      bool  = True
+    max_retries:   int   = 2
+    retry_delay:   float = 5.0   # seconds between retries (base)
+    output_subdir: str   = "generated"

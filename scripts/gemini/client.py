@@ -24,13 +24,15 @@ from .config import (
     QUALITY_SUFFIX,
     TOOLS_BTN_SEL,
 )
+from .watermark import remove_gemini_watermark
 
-# Ensure scripts/ is on sys.path so remove_watermark can be imported
-_SCRIPTS_DIR = Path(__file__).parent.parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from remove_watermark import remove_gemini_watermark  # noqa: E402
+class BrowserGenerationError(Exception):
+    """Raised when browser-based image generation fails."""
+
+    def __init__(self, message: str, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def _fix_windows_event_loop() -> None:
@@ -48,9 +50,9 @@ class GeminiImageGenerator:
     ) -> None:
         # Default skill_dir = two levels above this file (scripts/gemini/ → skill root)
         self.skill_dir    = skill_dir or Path(__file__).parent.parent.parent
-        self.storage_path = self.skill_dir / "storage_state.json"
-        self.profile_dir  = self.skill_dir / "browser-profile"
-        self.download_dir = self.skill_dir / "downloads"
+        self.storage_path = self.skill_dir / ".data" / "storage_state.json"
+        self.profile_dir  = self.skill_dir / ".data"  / "browser-profile"
+        self.download_dir = self.skill_dir / ".data"  / "downloads"
         self.headless     = headless
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,7 +143,11 @@ class GeminiImageGenerator:
         output_path: str | None = None,
         count: int = 1,
     ) -> list[str]:
-        """Synchronous wrapper; returns list of saved file paths."""
+        """Synchronous wrapper; returns list of saved file paths.
+
+        Raises:
+            BrowserGenerationError: if generation fails.
+        """
         _fix_windows_event_loop()
         return asyncio.run(
             self.generate_async(
@@ -157,12 +163,19 @@ class GeminiImageGenerator:
         output_path: str | None = None,
         count: int = 1,
     ) -> list[str]:
-        """Async core — generate *count* images; return list of saved paths."""
+        """Async core — generate *count* images; return list of saved paths.
+
+        Raises:
+            BrowserGenerationError: if generation fails (retryable flag indicates
+                whether a retry might succeed).
+        """
         from playwright.async_api import async_playwright
 
         if not self.storage_path.exists():
-            self._log("No saved session found. Run: gemini-img login")
-            raise SystemExit(1)
+            raise BrowserGenerationError(
+                "No saved session found. Run: gemini-img login",
+                retryable=False,
+            )
 
         output_path  = output_path or self.default_output(prompt)
         enhanced     = self._enhance_prompt(prompt)
@@ -181,17 +194,18 @@ class GeminiImageGenerator:
                     "Chrome/131.0.0.0 Safari/537.36"
                 ),
             )
-            page = await context.new_page()
-
+            page = None
             try:
+                page = await context.new_page()
                 self._log(f"Opening Gemini... (headless={self.headless})")
                 await page.goto(GEMINI_URL, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2500)
 
                 if "accounts.google.com" in page.url:
-                    self._log("Session expired. Run: gemini-img login")
-                    await browser.close()
-                    raise SystemExit(1)
+                    raise BrowserGenerationError(
+                        "Session expired — run: gemini-img login",
+                        retryable=False,
+                    )
 
                 self._log("Gemini loaded.")
 
@@ -204,16 +218,27 @@ class GeminiImageGenerator:
                     if i < count - 1:
                         await page.wait_for_timeout(1500)
 
+            except BrowserGenerationError:
+                if page:
+                    try:
+                        dbg = str(self.skill_dir / "debug_screenshot.png")
+                        await page.screenshot(path=dbg)
+                        self._log(f"Debug screenshot: {dbg}")
+                    except Exception:
+                        pass
+                await browser.close()
+                raise
             except Exception as e:
                 self._log(f"Error: {e}")
-                try:
-                    dbg = str(self.skill_dir / "debug_screenshot.png")
-                    await page.screenshot(path=dbg)
-                    self._log(f"Debug screenshot: {dbg}")
-                except Exception:
-                    pass
+                if page:
+                    try:
+                        dbg = str(self.skill_dir / "debug_screenshot.png")
+                        await page.screenshot(path=dbg)
+                        self._log(f"Debug screenshot: {dbg}")
+                    except Exception:
+                        pass
                 await browser.close()
-                raise SystemExit(1)
+                raise BrowserGenerationError(str(e), retryable=True) from e
 
             await browser.close()
 
@@ -223,7 +248,6 @@ class GeminiImageGenerator:
 
     async def _click_tools_button(self, page) -> bool:
         """Click the 工具 button to open the tools panel; return True on success."""
-        # Try by selector
         try:
             btn = await page.wait_for_selector(TOOLS_BTN_SEL, timeout=15_000)
             await btn.click()
@@ -232,7 +256,6 @@ class GeminiImageGenerator:
         except Exception:
             pass
 
-        # Text-content fallback
         handle = await page.evaluate_handle("""() => {
             const btns = Array.from(document.querySelectorAll('button'));
             return btns.find(b => b.innerText && b.innerText.trim().includes('工具'));
@@ -246,7 +269,6 @@ class GeminiImageGenerator:
         except Exception:
             pass
 
-        # Delayed retry
         self._log("工具 button not found, waiting 15s...")
         await page.wait_for_timeout(15_000)
         try:
@@ -301,9 +323,10 @@ class GeminiImageGenerator:
             except Exception:
                 continue
 
-        dbg = str(self.skill_dir / "debug_screenshot.png")
-        await page.screenshot(path=dbg)
-        raise RuntimeError(f"Image not ready after 180s. Debug: {dbg}")
+        raise BrowserGenerationError(
+            "Image not ready after 180s",
+            retryable=True,
+        )
 
     async def _intercept_fullsize_image(self, page) -> bytes | None:
         """Click 更多 → 下载图片; intercept the full-size network response."""
@@ -364,29 +387,26 @@ class GeminiImageGenerator:
             return null;
         }}""")
         if not b64:
-            dbg = str(self.skill_dir / "debug_screenshot.png")
-            await page.screenshot(path=dbg)
-            raise RuntimeError(f"Could not export image. Debug: {dbg}")
+            raise BrowserGenerationError(
+                "Could not export image (canvas fallback failed)",
+                retryable=True,
+            )
         return base64.b64decode(b64)
 
     async def _generate_one(self, page, enhanced_prompt: str, output_path: str) -> None:
         """Submit one prompt, download the result, and remove the watermark."""
-        # Wait for the Angular app's textbox
         input_box = await page.wait_for_selector(
             'div[contenteditable="true"][role="textbox"]',
             timeout=30_000,
         )
 
-        # Open tools panel and activate 制作图片 mode
         if await self._click_tools_button(page):
             if await self._click_make_image_chip(page):
-                # Page may re-render after chip click
                 input_box = await page.wait_for_selector(
                     'div[contenteditable="true"][role="textbox"]',
                     timeout=10_000,
                 )
 
-        # Type the enhanced prompt
         await input_box.click()
         await page.keyboard.press("Control+a")
         await page.keyboard.press("Backspace")
@@ -400,7 +420,6 @@ class GeminiImageGenerator:
         self._log("Prompt submitted. Waiting for image (up to 180s)...")
         await self._wait_for_image_ready(page)
 
-        # Wait for the <img> element to appear in the DOM
         try:
             await page.wait_for_selector(IMAGE_ELEMENT_SELECTOR, timeout=20_000)
             self._log("Image element rendered.")
@@ -408,7 +427,6 @@ class GeminiImageGenerator:
             pass
         await page.wait_for_timeout(500)
 
-        # Try full-size network intercept first, then canvas fallback
         img_data = await self._intercept_fullsize_image(page)
         if img_data:
             Path(output_path).write_bytes(img_data)
