@@ -14,10 +14,11 @@ from .task_manager import Task, TaskManager, TaskStatus
 @dataclass
 class BatchResult:
     """Summary of a batch generation run."""
-    total:     int
+
+    total: int
     completed: int
-    failed:    int
-    tasks:     List[Task]
+    failed: int
+    tasks: List[Task]
 
 
 class BrowserImageGenerator:
@@ -28,10 +29,10 @@ class BrowserImageGenerator:
     """
 
     def __init__(self, config: BrowserConfig, task_manager: TaskManager) -> None:
-        self.config       = config
+        self.config = config
         self.task_manager = task_manager
-        self.browser_gen  = GeminiImageGenerator(headless=config.headless)
-        self.retry        = RetryHandler(
+        self.browser_gen = GeminiImageGenerator(headless=config.headless)
+        self.retry = RetryHandler(
             max_retries=config.max_retries,
             base_delay=config.retry_delay,
         )
@@ -44,6 +45,7 @@ class BrowserImageGenerator:
         self.task_manager.update_task(task)
 
         try:
+
             async def _do() -> None:
                 results = await self.browser_gen.generate_async(
                     task.prompt_content,
@@ -57,13 +59,13 @@ class BrowserImageGenerator:
                     )
 
             await self.retry.execute_with_retry(_do, task)
-            task.status       = TaskStatus.COMPLETED.value
+            task.status = TaskStatus.COMPLETED.value
             task.completed_at = datetime.now().isoformat()
-            task.error        = None
+            task.error = None
 
         except Exception as e:
-            task.status       = TaskStatus.FAILED.value
-            task.error        = str(e)
+            task.status = TaskStatus.FAILED.value
+            task.error = str(e)
             task.completed_at = datetime.now().isoformat()
 
         self.task_manager.update_task(task)
@@ -107,5 +109,6 @@ class BrowserImageGenerator:
         if not pending:
             return BatchResult(total=0, completed=0, failed=0, tasks=[])
         from .utils import print_status
+
         print_status(self.task_manager)
         return await self.generate_batch(pending, on_progress=on_progress)

@@ -23,15 +23,18 @@ from gemini.utils import export_task_report, print_status, print_task_details
 
 def run_async(func):
     """Decorator: run an async Click command in the default event loop."""
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
         return asyncio.run(func(*args, **kwargs))
+
     return wrapper
 
 
 # ── CLI group ─────────────────────────────────────────────────────────────────
+
 
 @click.group()
 @click.option(
@@ -52,6 +55,7 @@ def cli(ctx, headed: bool):
 
 # ── login ─────────────────────────────────────────────────────────────────────
 
+
 @cli.command()
 def login():
     """一次性登录 Google 账号，保存 Cookie 到 storage_state.json。"""
@@ -60,10 +64,12 @@ def login():
 
 # ── generate (direct prompt) ──────────────────────────────────────────────────
 
+
 @cli.command("generate")
 @click.argument("prompt")
 @click.option(
-    "-o", "--output",
+    "-o",
+    "--output",
     default=None,
     help="输出文件路径（默认：~/Desktop/<提示词>_<时间戳>.png）",
 )
@@ -84,7 +90,7 @@ def generate(ctx, prompt: str, output: str | None, count: int):
         gemini-img generate "a red cat" -o ./cat.png --count 3
     """
     config = ctx.obj["config"]
-    gen    = GeminiImageGenerator(headless=config.headless)
+    gen = GeminiImageGenerator(headless=config.headless)
     try:
         results = gen.generate(prompt, output, count)
     except BrowserGenerationError as e:
@@ -92,7 +98,12 @@ def generate(ctx, prompt: str, output: str | None, count: int):
         raise SystemExit(1)
     click.echo(
         json.dumps(
-            {"success": True, "files": results, "prompt": prompt, "count": len(results)},
+            {
+                "success": True,
+                "files": results,
+                "prompt": prompt,
+                "count": len(results),
+            },
             ensure_ascii=False,
         )
     )
@@ -100,10 +111,12 @@ def generate(ctx, prompt: str, output: str | None, count: int):
 
 # ── batch (from .md files) ────────────────────────────────────────────────────
 
+
 @cli.command("generate-batch")
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option(
-    "-o", "--output-dir",
+    "-o",
+    "--output-dir",
     default=None,
     help="输出目录（默认：INPUT_DIR/generated）",
 )
@@ -121,9 +134,10 @@ async def generate_batch(ctx, input_dir: str, output_dir: str | None):
 
         gemini-img generate-batch ./prompts/ -o ./output/
     """
-    config       = ctx.obj["config"]
-    task_manager = TaskManager(input_dir=input_dir, output_dir=output_dir,
-                               output_subdir=config.output_subdir)
+    config = ctx.obj["config"]
+    task_manager = TaskManager(
+        input_dir=input_dir, output_dir=output_dir, output_subdir=config.output_subdir
+    )
     task_manager.scan_prompts()
     task_manager.load_tasks()
 
@@ -141,7 +155,7 @@ async def generate_batch(ctx, input_dir: str, output_dir: str | None):
         if task.error:
             click.echo(f"    错误: {task.error}")
 
-    gen    = BrowserImageGenerator(config, task_manager)
+    gen = BrowserImageGenerator(config, task_manager)
     result = await gen.generate_batch(pending, on_progress=on_progress)
 
     click.echo("\n" + "=" * 50)
@@ -155,11 +169,13 @@ async def generate_batch(ctx, input_dir: str, output_dir: str | None):
 
 # ── generate-single ───────────────────────────────────────────────────────────
 
+
 @cli.command("generate-single")
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.argument("task_id")
 @click.option(
-    "-o", "--output-dir",
+    "-o",
+    "--output-dir",
     default=None,
     help="输出目录（默认：INPUT_DIR/generated）",
 )
@@ -176,9 +192,10 @@ async def generate_single(ctx, input_dir: str, task_id: str, output_dir: str | N
 
         gemini-img generate-single ./prompts/ my_prompt
     """
-    config       = ctx.obj["config"]
-    task_manager = TaskManager(input_dir=input_dir, output_dir=output_dir,
-                               output_subdir=config.output_subdir)
+    config = ctx.obj["config"]
+    task_manager = TaskManager(
+        input_dir=input_dir, output_dir=output_dir, output_subdir=config.output_subdir
+    )
     task_manager.load_tasks()
 
     task = task_manager.get_task(task_id)
@@ -190,7 +207,7 @@ async def generate_single(ctx, input_dir: str, task_id: str, output_dir: str | N
         task = task_manager.create_task(md_file)
 
     click.echo(f"生成任务: {task_id}")
-    gen    = BrowserImageGenerator(config, task_manager)
+    gen = BrowserImageGenerator(config, task_manager)
     result = await gen.generate_single(task)
 
     if result.status == TaskStatus.COMPLETED.value:
@@ -201,6 +218,7 @@ async def generate_single(ctx, input_dir: str, task_id: str, output_dir: str | N
 
 
 # ── status ────────────────────────────────────────────────────────────────────
+
 
 @cli.command()
 @click.argument("input_dir", type=click.Path(exists=True))
@@ -217,6 +235,7 @@ def status(input_dir: str):
 
 
 # ── tasks ─────────────────────────────────────────────────────────────────────
+
 
 @cli.command()
 @click.argument("input_dir", type=click.Path(exists=True))
@@ -247,11 +266,11 @@ def tasks(input_dir: str, task_id: str | None):
     click.echo("-" * 60)
 
     icons = {
-        TaskStatus.PENDING.value:   "○",
-        TaskStatus.RUNNING.value:   "◐",
-        TaskStatus.RETRYING.value:  "↻",
+        TaskStatus.PENDING.value: "○",
+        TaskStatus.RUNNING.value: "◐",
+        TaskStatus.RETRYING.value: "↻",
         TaskStatus.COMPLETED.value: "●",
-        TaskStatus.FAILED.value:    "✗",
+        TaskStatus.FAILED.value: "✗",
     }
     for task in tm.tasks.values():
         icon = icons.get(task.status, "?")
@@ -270,10 +289,12 @@ def tasks(input_dir: str, task_id: str | None):
 
 # ── retry ─────────────────────────────────────────────────────────────────────
 
+
 @cli.command()
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option(
-    "--failed-only", "-f",
+    "--failed-only",
+    "-f",
     is_flag=True,
     help="仅重试失败的任务（跳过 pending）。",
 )
@@ -289,7 +310,7 @@ async def retry(ctx, input_dir: str, failed_only: bool):
         gemini-img retry ./prompts/ -f       # 仅重置并重试失败任务
     """
     config = ctx.obj["config"]
-    tm     = TaskManager(input_dir=input_dir)
+    tm = TaskManager(input_dir=input_dir)
     tm.load_tasks()
 
     if failed_only:
@@ -310,17 +331,19 @@ async def retry(ctx, input_dir: str, failed_only: bool):
         icon = "✓" if task.status == TaskStatus.COMPLETED.value else "✗"
         click.echo(f"[{processed}/{total}] {icon} {task.id}: {task.status}")
 
-    gen    = BrowserImageGenerator(config, tm)
+    gen = BrowserImageGenerator(config, tm)
     result = await gen.generate_batch(pending, on_progress=on_progress)
     click.echo(f"\n重试完成: 成功 {result.completed}，失败 {result.failed}")
 
 
 # ── report ────────────────────────────────────────────────────────────────────
 
+
 @cli.command()
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option(
-    "-o", "--output-file",
+    "-o",
+    "--output-file",
     default=None,
     help="报告输出路径（默认：INPUT_DIR/generation_report.json）",
 )
@@ -348,9 +371,12 @@ def report(input_dir: str, output_file: str | None):
 
 # ── clear ─────────────────────────────────────────────────────────────────────
 
+
 @cli.command()
 @click.argument("input_dir", type=click.Path(exists=True))
-@click.confirmation_option(prompt="确定要清除已完成任务的记录吗？（生成的图片不会被删除）")
+@click.confirmation_option(
+    prompt="确定要清除已完成任务的记录吗？（生成的图片不会被删除）"
+)
 def clear(input_dir: str):
     """清除已完成任务的跟踪记录（不删除生成的图片）。
 
@@ -365,6 +391,7 @@ def clear(input_dir: str):
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
+
 
 def main():
     cli()

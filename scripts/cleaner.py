@@ -5,6 +5,7 @@ Usage:
     python remove_watermark.py FILE [FILE ...]
     python remove_watermark.py batch DIR [--recursive]
 """
+
 import sys
 from pathlib import Path
 

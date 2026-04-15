@@ -9,6 +9,7 @@ from .task_manager import Task, TaskManager, TaskStatus
 
 # ── display ───────────────────────────────────────────────────────────────────
 
+
 def print_status(task_manager: TaskManager) -> None:
     """Print a summary table of task counts to stdout."""
     s = task_manager.get_stats()
@@ -54,22 +55,23 @@ def print_task_details(task: Task) -> None:
 
 # ── report export ─────────────────────────────────────────────────────────────
 
+
 def export_task_report(task_manager: TaskManager, output_file: str) -> None:
     """Write a JSON report of all tasks to *output_file*."""
     report = {
         "generated_at": datetime.now().isoformat(),
-        "input_dir":    str(task_manager.input_dir),
-        "output_dir":   str(task_manager.output_dir),
-        "stats":        task_manager.get_stats(),
+        "input_dir": str(task_manager.input_dir),
+        "output_dir": str(task_manager.output_dir),
+        "stats": task_manager.get_stats(),
         "tasks": [
             {
-                "id":           t.id,
-                "prompt_file":  t.prompt_file,
-                "output_path":  t.output_path,
-                "status":       t.status,
-                "retry_count":  t.retry_count,
-                "error":        t.error,
-                "created_at":   t.created_at,
+                "id": t.id,
+                "prompt_file": t.prompt_file,
+                "output_path": t.output_path,
+                "status": t.status,
+                "retry_count": t.retry_count,
+                "error": t.error,
+                "created_at": t.created_at,
                 "completed_at": t.completed_at,
             }
             for t in task_manager.tasks.values()

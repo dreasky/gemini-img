@@ -9,24 +9,24 @@ from typing import Dict, List, Optional
 
 
 class TaskStatus(Enum):
-    PENDING   = "pending"
-    RUNNING   = "running"
-    RETRYING  = "retrying"
+    PENDING = "pending"
+    RUNNING = "running"
+    RETRYING = "retrying"
     COMPLETED = "completed"
-    FAILED    = "failed"
+    FAILED = "failed"
 
 
 @dataclass
 class Task:
-    id:              str
-    prompt_file:     str
-    prompt_content:  str
-    output_path:     str
-    status:          str = TaskStatus.PENDING.value
-    retry_count:     int = 0
-    error:           Optional[str] = None
-    created_at:      str = ""
-    completed_at:    Optional[str] = None
+    id: str
+    prompt_file: str
+    prompt_content: str
+    output_path: str
+    status: str = TaskStatus.PENDING.value
+    retry_count: int = 0
+    error: Optional[str] = None
+    created_at: str = ""
+    completed_at: Optional[str] = None
 
     def __post_init__(self):
         if not self.created_at:
@@ -51,10 +51,9 @@ class TaskManager:
         output_dir: Optional[str] = None,
         output_subdir: str = "generated",
     ) -> None:
-        self.input_dir  = Path(input_dir).resolve()
+        self.input_dir = Path(input_dir).resolve()
         self.output_dir = (
-            Path(output_dir).resolve() if output_dir
-            else self.input_dir / output_subdir
+            Path(output_dir).resolve() if output_dir else self.input_dir / output_subdir
         )
         self.state_file = self.input_dir / self.STATE_FILE
         self.tasks: Dict[str, Task] = {}
@@ -68,8 +67,7 @@ class TaskManager:
                 with open(self.state_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 self.tasks = {
-                    tid: Task.from_dict(td)
-                    for tid, td in data.get("tasks", {}).items()
+                    tid: Task.from_dict(td) for tid, td in data.get("tasks", {}).items()
                 }
             except (json.JSONDecodeError, KeyError, TypeError):
                 self.tasks = {}
@@ -77,12 +75,12 @@ class TaskManager:
 
     def save_tasks(self) -> None:
         data = {
-            "version":    "1.0",
+            "version": "1.0",
             "updated_at": datetime.now().isoformat(),
-            "input_dir":  str(self.input_dir),
+            "input_dir": str(self.input_dir),
             "output_dir": str(self.output_dir),
-            "tasks":      {tid: t.to_dict() for tid, t in self.tasks.items()},
-            "stats":      self.get_stats(),
+            "tasks": {tid: t.to_dict() for tid, t in self.tasks.items()},
+            "stats": self.get_stats(),
         }
         with open(self.state_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -103,10 +101,10 @@ class TaskManager:
             except Exception:
                 continue
             task = Task(
-                id             = task_id,
-                prompt_file    = md_file.name,
-                prompt_content = content,
-                output_path    = str(self.output_dir / f"{task_id}.png"),
+                id=task_id,
+                prompt_file=md_file.name,
+                prompt_content=content,
+                output_path=str(self.output_dir / f"{task_id}.png"),
             )
             self.tasks[task_id] = task
             new_tasks.append(task)
@@ -120,10 +118,10 @@ class TaskManager:
         task_id = md_file.stem
         content = md_file.read_text(encoding="utf-8").strip()
         task = Task(
-            id             = task_id,
-            prompt_file    = md_file.name,
-            prompt_content = content,
-            output_path    = str(self.output_dir / f"{task_id}.png"),
+            id=task_id,
+            prompt_file=md_file.name,
+            prompt_content=content,
+            output_path=str(self.output_dir / f"{task_id}.png"),
         )
         self.tasks[task_id] = task
         self.save_tasks()
@@ -142,7 +140,8 @@ class TaskManager:
 
     def get_pending_tasks(self) -> List[Task]:
         return [
-            t for t in self.tasks.values()
+            t
+            for t in self.tasks.values()
             if t.status in (TaskStatus.PENDING.value, TaskStatus.RETRYING.value)
         ]
 
@@ -150,18 +149,20 @@ class TaskManager:
         return [t for t in self.tasks.values() if t.status == TaskStatus.RUNNING.value]
 
     def get_completed_tasks(self) -> List[Task]:
-        return [t for t in self.tasks.values() if t.status == TaskStatus.COMPLETED.value]
+        return [
+            t for t in self.tasks.values() if t.status == TaskStatus.COMPLETED.value
+        ]
 
     def get_failed_tasks(self) -> List[Task]:
         return [t for t in self.tasks.values() if t.status == TaskStatus.FAILED.value]
 
     def get_stats(self) -> dict:
         return {
-            "total":     len(self.tasks),
-            "pending":   len(self.get_pending_tasks()),
-            "running":   len(self.get_running_tasks()),
+            "total": len(self.tasks),
+            "pending": len(self.get_pending_tasks()),
+            "running": len(self.get_running_tasks()),
             "completed": len(self.get_completed_tasks()),
-            "failed":    len(self.get_failed_tasks()),
+            "failed": len(self.get_failed_tasks()),
         }
 
     # ── bulk operations ────────────────────────────────────────────────────────
@@ -170,9 +171,9 @@ class TaskManager:
         """Reset all failed tasks to pending; return count reset."""
         count = 0
         for task in self.get_failed_tasks():
-            task.status      = TaskStatus.PENDING.value
+            task.status = TaskStatus.PENDING.value
             task.retry_count = 0
-            task.error       = None
+            task.error = None
             count += 1
         if count:
             self.save_tasks()

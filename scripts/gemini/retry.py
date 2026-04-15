@@ -15,19 +15,19 @@ class RetryHandler:
 
     def __init__(
         self,
-        max_retries:     int   = 2,
-        base_delay:      float = 5.0,
-        max_delay:       float = 60.0,
+        max_retries: int = 2,
+        base_delay: float = 5.0,
+        max_delay: float = 60.0,
         exponential_base: float = 2.0,
     ) -> None:
-        self.max_retries      = max_retries
-        self.base_delay       = base_delay
-        self.max_delay        = max_delay
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
         self.exponential_base = exponential_base
 
     def _delay(self, attempt: int) -> float:
-        delay  = self.base_delay * (self.exponential_base ** attempt)
-        delay  = min(delay, self.max_delay)
+        delay = self.base_delay * (self.exponential_base**attempt)
+        delay = min(delay, self.max_delay)
         jitter = delay * random.uniform(0, 0.25)
         return delay + jitter
 
@@ -52,7 +52,7 @@ class RetryHandler:
                 if not e.retryable or attempt >= self.max_retries:
                     raise
                 task.retry_count = attempt + 1
-                task.status      = TaskStatus.RETRYING.value
+                task.status = TaskStatus.RETRYING.value
                 await asyncio.sleep(self._delay(attempt))
 
             except Exception as e:
@@ -60,7 +60,7 @@ class RetryHandler:
                 if attempt >= self.max_retries:
                     raise BrowserGenerationError(str(e), retryable=False) from e
                 task.retry_count = attempt + 1
-                task.status      = TaskStatus.RETRYING.value
+                task.status = TaskStatus.RETRYING.value
                 await asyncio.sleep(self._delay(attempt))
 
         raise last_error  # type: ignore[misc]

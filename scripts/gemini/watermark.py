@@ -7,7 +7,7 @@ from pathlib import Path
 
 # skill root: scripts/gemini/watermark.py → scripts/gemini/ → scripts/ → skill/
 _SKILL_DIR = Path(__file__).parent.parent.parent
-_GWR_BIN   = _SKILL_DIR / "node_modules/@pilio/gemini-watermark-remover/bin/gwr.mjs"
+_GWR_BIN = _SKILL_DIR / "node_modules/@pilio/gemini-watermark-remover/bin/gwr.mjs"
 
 
 def _log(msg: str) -> None:
@@ -32,8 +32,14 @@ def remove_gemini_watermark(image_path: str) -> bool:
     try:
         result = subprocess.run(
             [
-                "node", str(_GWR_BIN), "remove", str(path),
-                "--output", str(path), "--overwrite", "--json",
+                "node",
+                str(_GWR_BIN),
+                "remove",
+                str(path),
+                "--output",
+                str(path),
+                "--overwrite",
+                "--json",
             ],
             capture_output=True,
             text=True,
@@ -45,9 +51,9 @@ def remove_gemini_watermark(image_path: str) -> bool:
             return False
 
         try:
-            meta    = json.loads(result.stdout.strip())
+            meta = json.loads(result.stdout.strip())
             applied = meta.get("meta", {}).get("applied", False)
-            pos     = meta.get("meta", {}).get("position", {})
+            pos = meta.get("meta", {}).get("position", {})
             if applied:
                 _log(
                     f"Watermark removed: pos=({pos.get('x')},{pos.get('y')}) "

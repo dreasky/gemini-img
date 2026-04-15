@@ -54,7 +54,7 @@ def _file_hash(path: Path) -> str:
 def ensure_deps():
     """Ensure Python dependencies are up-to-date."""
     skill_dir = Path(__file__).parent.parent
-    req_file  = skill_dir / "requirements.txt"
+    req_file = skill_dir / "requirements.txt"
     hash_file = skill_dir / ".venv" / ".requirements.hash"
 
     if not req_file.exists():
@@ -65,7 +65,7 @@ def ensure_deps():
         return  # up-to-date
 
     setup_script = skill_dir / "scripts" / "setup_environment.py"
-    venv_python  = get_venv_python()
+    venv_python = get_venv_python()
     result = subprocess.run([str(venv_python), str(setup_script)], timeout=TIMEOUT_DEPS)
     if result.returncode == 0:
         hash_file.write_text(current_hash)
@@ -73,9 +73,9 @@ def ensure_deps():
 
 def ensure_node_deps():
     """Ensure Node.js dependencies are up-to-date (mirrors ensure_deps)."""
-    skill_dir    = Path(__file__).parent.parent
+    skill_dir = Path(__file__).parent.parent
     package_json = skill_dir / "package.json"
-    hash_file    = skill_dir / ".node_modules.hash"
+    hash_file = skill_dir / ".node_modules.hash"
 
     if not package_json.exists():
         return

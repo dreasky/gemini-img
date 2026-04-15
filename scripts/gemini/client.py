@@ -49,11 +49,11 @@ class GeminiImageGenerator:
         headless: bool = True,
     ) -> None:
         # Default skill_dir = two levels above this file (scripts/gemini/ → skill root)
-        self.skill_dir    = skill_dir or Path(__file__).parent.parent.parent
+        self.skill_dir = skill_dir or Path(__file__).parent.parent.parent
         self.storage_path = self.skill_dir / ".data" / "storage_state.json"
-        self.profile_dir  = self.skill_dir / ".data"  / "browser-profile"
-        self.download_dir = self.skill_dir / ".data"  / "downloads"
-        self.headless     = headless
+        self.profile_dir = self.skill_dir / ".data" / "browser-profile"
+        self.download_dir = self.skill_dir / ".data" / "downloads"
+        self.headless = headless
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
     # ── helpers ────────────────────────────────────────────────────────────────
@@ -65,13 +65,16 @@ class GeminiImageGenerator:
     def default_output(prompt: str) -> str:
         """Return a timestamped PNG path on the desktop."""
         desktop = Path.home() / "Desktop"
-        safe    = "".join(c for c in prompt[:30] if c.isalnum() or c in " _-").strip()
-        safe    = safe.replace(" ", "_") or "gemini_image"
-        ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe = "".join(c for c in prompt[:30] if c.isalnum() or c in " _-").strip()
+        safe = safe.replace(" ", "_") or "gemini_image"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         return str(desktop / f"{safe}_{ts}.png")
 
     def _enhance_prompt(self, prompt: str) -> str:
-        if "ultra sharp" not in prompt.lower() and "high definition" not in prompt.lower():
+        if (
+            "ultra sharp" not in prompt.lower()
+            and "high definition" not in prompt.lower()
+        ):
             return prompt + QUALITY_SUFFIX
         return prompt
 
@@ -177,8 +180,8 @@ class GeminiImageGenerator:
                 retryable=False,
             )
 
-        output_path  = output_path or self.default_output(prompt)
-        enhanced     = self._enhance_prompt(prompt)
+        output_path = output_path or self.default_output(prompt)
+        enhanced = self._enhance_prompt(prompt)
         results: list[str] = []
 
         async with async_playwright() as p:
@@ -256,10 +259,12 @@ class GeminiImageGenerator:
         except Exception:
             pass
 
-        handle = await page.evaluate_handle("""() => {
+        handle = await page.evaluate_handle(
+            """() => {
             const btns = Array.from(document.querySelectorAll('button'));
             return btns.find(b => b.innerText && b.innerText.trim().includes('工具'));
-        }""")
+        }"""
+        )
         try:
             el = handle.as_element()
             if el:
@@ -292,10 +297,12 @@ class GeminiImageGenerator:
         except Exception:
             pass
 
-        handle = await page.evaluate_handle("""() => {
+        handle = await page.evaluate_handle(
+            """() => {
             const btns = Array.from(document.querySelectorAll('button'));
             return btns.find(b => b.innerText && b.innerText.trim().includes('制作图片'));
-        }""")
+        }"""
+        )
         try:
             el = handle.as_element()
             if el:
@@ -370,7 +377,8 @@ class GeminiImageGenerator:
 
     async def _canvas_fallback(self, page) -> bytes:
         """Extract image via canvas export when network intercept yields nothing."""
-        b64 = await page.evaluate(f"""async () => {{
+        b64 = await page.evaluate(
+            f"""async () => {{
             const img = document.querySelector('{IMAGE_ELEMENT_SELECTOR}');
             if (!img) return null;
             try {{
@@ -385,7 +393,8 @@ class GeminiImageGenerator:
                 return btoa(String.fromCharCode(...new Uint8Array(buf)));
             }} catch(e) {{}}
             return null;
-        }}""")
+        }}"""
+        )
         if not b64:
             raise BrowserGenerationError(
                 "Could not export image (canvas fallback failed)",
