@@ -20,7 +20,7 @@ class SkillEnvironment:
         self.venv_dir = self.skill_dir / ".venv"
         self.requirements_file = self.skill_dir / "requirements.txt"
 
-        if os.name == 'nt':
+        if os.name == "nt":
             self.venv_python = self.venv_dir / "Scripts" / "python.exe"
         else:
             self.venv_python = self.venv_dir / "bin" / "python"
@@ -44,7 +44,8 @@ class SkillEnvironment:
         try:
             result = subprocess.run(
                 [str(self.venv_python), "-m", "uv", "--version"],
-                capture_output=True, timeout=30
+                capture_output=True,
+                timeout=30,
             )
             if result.returncode == 0:
                 return True
@@ -55,7 +56,8 @@ class SkillEnvironment:
         try:
             result = subprocess.run(
                 [str(self.venv_python), "-m", "pip", "install", "uv", "--quiet"],
-                capture_output=True, timeout=120
+                capture_output=True,
+                timeout=120,
             )
             return result.returncode == 0
         except Exception:
@@ -70,30 +72,48 @@ class SkillEnvironment:
         if not self._ensure_uv_installed():
             print("uv not available, falling back to pip...")
             result = subprocess.run(
-                [str(self.venv_python), "-m", "pip", "install", "-r", str(self.requirements_file)]
+                [
+                    str(self.venv_python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    str(self.requirements_file),
+                ]
             )
             return result.returncode == 0
 
         print("Installing dependencies with uv...")
         result = subprocess.run(
-            [str(self.venv_python), "-m", "uv", "pip", "install", "-U", "-r", str(self.requirements_file)]
+            [
+                str(self.venv_python),
+                "-m",
+                "uv",
+                "pip",
+                "install",
+                "-U",
+                "-r",
+                str(self.requirements_file),
+            ]
         )
         return result.returncode == 0
-
 
     def install_node_deps(self) -> bool:
         """Run npm install for Node.js dependencies; skip if package.json unchanged."""
         package_json = self.skill_dir / "package.json"
         node_modules = self.skill_dir / "node_modules"
-        hash_file    = self.skill_dir / ".node_modules.hash"
+        hash_file = self.skill_dir / ".node_modules.hash"
 
         if not package_json.exists():
             return True  # nothing to install
 
         current_hash = hashlib.sha256(package_json.read_bytes()).hexdigest()
 
-        if node_modules.exists() and hash_file.exists() \
-                and hash_file.read_text().strip() == current_hash:
+        if (
+            node_modules.exists()
+            and hash_file.exists()
+            and hash_file.read_text().strip() == current_hash
+        ):
             return True  # already up-to-date
 
         print("Installing Node.js dependencies...")
