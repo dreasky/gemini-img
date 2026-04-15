@@ -1,0 +1,21 @@
+# 环境变量和凭证
+.env
+.env.local
+*.pem
+*.key
+
+.venv
+.claude
+.workbuddy
+
+
+__pycache__
+.data
+.vscode/
+test/
+data
+
+node_modules
+
+# 项目临时忽略
+api_doc

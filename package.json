@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@pilio/gemini-watermark-remover": "^1.0.10"
+  }
+}
