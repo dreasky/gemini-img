@@ -8,7 +8,7 @@ from typing import Awaitable
 
 def _normalize_text(text: str) -> str:
     """Normalize text for input: collapse multiple blank lines into one."""
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
