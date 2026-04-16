@@ -2,6 +2,12 @@
 
 基于 Playwright 的 Google Gemini 图片生成自动化工具。
 
+## Skill安装
+
+```bash
+npx skills add https://github.com/dreasky/gemini-img --skill gemini-img
+```
+
 ## 首次使用
 
 ```bash
