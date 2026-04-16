@@ -72,6 +72,8 @@ class GeminiHandler(Handler):
 
             # On retry with conversation URL: check if image is already ready
             if conversation_url:
+                # Give the page time to render the image area
+                await page.wait_for_timeout(3000)
                 if await self._check_image_ready(page):
                     # Image already generated — just download
                     img_data = await self.download_image(page)
@@ -123,11 +125,15 @@ class GeminiHandler(Handler):
         except Exception as e:
             return Result(success=False, error=str(e))
 
-    async def _check_image_ready(self, page) -> bool:
-        """Quick check if image is already generated on the page."""
+    async def _check_image_ready(self, page, timeout: int = 10_000) -> bool:
+        """Check if image is already generated on the page.
+
+        Uses wait_for_selector with a short timeout so the image
+        area has time to render after page load.
+        """
         try:
-            el = await page.query_selector(IMAGE_READY_SELECTOR)
-            return el is not None
+            await page.wait_for_selector(IMAGE_READY_SELECTOR, timeout=timeout)
+            return True
         except Exception:
             return False
 
