@@ -8,7 +8,6 @@ from browser_scheduler import (
     Handler,
     Result,
     TaskStore,
-    insert_text_with_newlines,
 )
 
 from .config import (
@@ -39,39 +38,34 @@ class GeminiStore(TaskStore):
 class GeminiHandler(Handler):
     """Handler for Gemini image generation.
 
-    Contains all browser interaction logic. Both GeminiClient and
-    GeminiExecutor should delegate browser operations to this class
-    to avoid duplicating selector/interaction knowledge.
+    All browser interaction logic lives here. Both GeminiClient and
+    GeminiExecutor delegate to this class.
     """
 
     def __init__(self, quality_suffix: str = QUALITY_SUFFIX, image_timeout: int = 180):
         self.quality_suffix = quality_suffix
         self.image_timeout = image_timeout
 
-    def _enhance_prompt(self, prompt: str) -> str:
-        """Add quality suffix if needed."""
-        if (
-            "ultra sharp" not in prompt.lower()
-            and "high definition" not in prompt.lower()
-        ):
-            return prompt + self.quality_suffix
-        return prompt
+    # ── Page setup ────────────────────────────────────────────────────
 
-    # ── Browser interaction helpers ──────────────────────────────────
+    async def navigate_and_wait(self, page) -> Optional[str]:
+        """Navigate to Gemini, wait for page ready. Returns input selector or None."""
+        await page.goto(GEMINI_URL, wait_until="domcontentloaded")
+
+        # Wait for possible session redirect
+        await page.wait_for_timeout(1500)
+        if "accounts.google.com" in page.url:
+            return None
+
+        return await self.wait_for_input_box(page)
+
+    # ── Input helpers ─────────────────────────────────────────────────
 
     async def wait_for_input_box(self, page, timeout: int = 15_000) -> Optional[str]:
-        """Wait for any known input box selector to appear on the page.
+        """Wait for input box. Returns working selector or None."""
+        selectors = [CHAT_INPUT_SELECTOR, '.ql-editor', 'div[contenteditable="true"]']
 
-        Uses page.query_selector for instant check first, then falls back
-        to wait_for_selector with the first candidate.
-        Returns the working selector string, or None if not found.
-        """
-        selectors = [
-            CHAT_INPUT_SELECTOR,
-            '.ql-editor',
-            'div[contenteditable="true"]',
-        ]
-        # Quick check — element may already be in DOM
+        # Quick check — may already be in DOM
         for sel in selectors:
             try:
                 if await page.query_selector(sel):
@@ -79,15 +73,16 @@ class GeminiHandler(Handler):
             except Exception:
                 continue
 
-        # Wait for the most specific selector first
+        # Wait for first match
         for sel in selectors:
             try:
-                el = await page.wait_for_selector(sel, timeout=timeout)
-                if el:
+                if await page.wait_for_selector(sel, timeout=timeout):
                     return sel
             except Exception:
                 continue
         return None
+
+    # ── Tools flow ────────────────────────────────────────────────────
 
     async def click_tools_button(self, page) -> bool:
         """Click the tools button to open the tools drawer."""
@@ -96,13 +91,12 @@ class GeminiHandler(Handler):
             if not sel:
                 continue
             try:
-                # Quick check first
                 btn = await page.query_selector(sel)
                 if not btn:
                     btn = await page.wait_for_selector(sel, timeout=5_000)
                 if btn:
                     await btn.click()
-                    await page.wait_for_timeout(2000)
+                    await page.wait_for_timeout(1000)
                     return True
             except Exception:
                 continue
@@ -118,7 +112,7 @@ class GeminiHandler(Handler):
             el = handle.as_element()
             if el:
                 await el.click()
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(1000)
                 return True
         except Exception:
             pass
@@ -126,7 +120,6 @@ class GeminiHandler(Handler):
 
     async def click_make_image_chip(self, page) -> bool:
         """Click the '制作图片' chip in the tools drawer."""
-        await page.wait_for_timeout(2000)
         for sel in MAKE_IMAGE_CHIP_SEL.split(','):
             sel = sel.strip()
             if not sel:
@@ -137,7 +130,7 @@ class GeminiHandler(Handler):
                     chip = await page.wait_for_selector(sel, timeout=5_000)
                 if chip:
                     await chip.click()
-                    await page.wait_for_timeout(3000)
+                    await page.wait_for_timeout(2000)
                     return True
             except Exception:
                 continue
@@ -153,11 +146,53 @@ class GeminiHandler(Handler):
             el = handle.as_element()
             if el:
                 await el.click()
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(2000)
                 return True
         except Exception:
             pass
         return False
+
+    # ── Prompt & send ─────────────────────────────────────────────────
+
+    def _enhance_prompt(self, prompt: str) -> str:
+        """Add quality suffix if needed."""
+        if (
+            "ultra sharp" not in prompt.lower()
+            and "high definition" not in prompt.lower()
+        ):
+            return prompt + self.quality_suffix
+        return prompt
+
+    async def input_and_send(self, page, selector: str, prompt: str) -> None:
+        """Insert prompt text and send with Enter.
+
+        Uses Playwright's keyboard.type() which fires real keyboard events
+        (keydown → input → keyup) so Gemini's framework always detects the
+        content change. Falls back to type() per character if needed.
+        """
+        enhanced = self._enhance_prompt(prompt)
+
+        # Click to focus the input
+        input_box = await page.wait_for_selector(selector, timeout=5_000)
+        await input_box.click()
+        await page.wait_for_timeout(100)
+
+        # Use keyboard.type() — fires real keyboard events that Gemini detects
+        # For newlines: press Enter creates a new paragraph in the editor,
+        # but would also submit. Instead, use Shift+Enter which inserts a
+        # line break without submitting.
+        lines = enhanced.split('\n')
+        for i, line in enumerate(lines):
+            if line:
+                await page.keyboard.type(line, delay=5)
+            # Insert line break (not submit) between lines
+            if i < len(lines) - 1:
+                await page.keyboard.press("Shift+Enter")
+
+        # Send message
+        await page.keyboard.press("Enter")
+
+    # ── Image generation & download ───────────────────────────────────
 
     async def wait_for_image_ready(self, page) -> bool:
         """Wait for image generation to complete."""
@@ -176,22 +211,17 @@ class GeminiHandler(Handler):
 
     async def download_image(self, page) -> Optional[bytes]:
         """Download the generated image."""
-        # Wait for image element to render
         try:
             await page.wait_for_selector(IMAGE_ELEMENT_SELECTOR, timeout=20_000)
         except Exception:
             pass
-        await page.wait_for_timeout(500)
 
-        # Try network intercept first
         img_data = await self._intercept_fullsize_image(page)
         if img_data:
             return img_data
-
-        # Fallback to canvas export
         return await self._canvas_fallback(page)
 
-    # ── Private download helpers ─────────────────────────────────────
+    # ── Private download helpers ──────────────────────────────────────
 
     async def _intercept_fullsize_image(self, page) -> Optional[bytes]:
         """Intercept full-size image from network."""
@@ -211,7 +241,6 @@ class GeminiHandler(Handler):
         try:
             more_btn = await page.wait_for_selector(MORE_MENU_SELECTOR, timeout=10_000)
             await more_btn.click()
-            await page.wait_for_timeout(500)
 
             dl_btn = await page.wait_for_selector(DOWNLOAD_BTN_SELECTOR, timeout=10_000)
             await dl_btn.click()
@@ -258,56 +287,29 @@ class GeminiHandler(Handler):
         page = ctx.page
 
         try:
-            # Navigate — use domcontentloaded + selector wait instead of networkidle
-            # (Gemini keeps WebSocket connections open, so networkidle always times out)
-            await page.goto(GEMINI_URL, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
-
-            # Check session (after short wait for possible redirects)
-            if "accounts.google.com" in page.url:
-                return Result(success=False, error="Session expired - run login")
-
-            # Wait for the initial input box (proves the page is ready)
-            input_sel = await self.wait_for_input_box(page)
+            input_sel = await self.navigate_and_wait(page)
             if not input_sel:
-                return Result(success=False, error="Input box not found after page load")
+                return Result(success=False, error="Session expired or page not ready")
 
-            # Click tools button → make image chip
             if not await self.click_tools_button(page):
-                # Retry once after a longer wait
-                await page.wait_for_timeout(10_000)
-                if not await self.click_tools_button(page):
-                    return Result(success=False, error="Failed to click tools button")
+                return Result(success=False, error="Failed to click tools button")
 
             if not await self.click_make_image_chip(page):
                 return Result(success=False, error="Failed to click make image chip")
 
-            # Wait for the image-generation input box to appear
             input_sel = await self.wait_for_input_box(page, timeout=15_000)
             if not input_sel:
                 return Result(success=False, error="Input box not found after clicking make image")
 
-            # Focus the input box before inserting text
-            input_box = await page.wait_for_selector(input_sel, timeout=5_000)
-            await input_box.click()
-            await page.wait_for_timeout(200)
+            await self.input_and_send(page, input_sel, task.data)
 
-            # Insert prompt text
-            enhanced = self._enhance_prompt(task.data)
-            await insert_text_with_newlines(page, input_sel, enhanced)
-            await page.wait_for_timeout(400)
-            await page.keyboard.press("Enter")
-
-            # Wait for image generation
             if not await self.wait_for_image_ready(page):
                 return Result(success=False, error="Image generation timeout")
 
-            # Download image
             img_data = await self.download_image(page)
             if not img_data:
                 return Result(success=False, error="Failed to download image")
 
-            # Save image
             if task.output_path:
                 task.output_path.write_bytes(img_data)
                 remove_gemini_watermark(task.output_path)

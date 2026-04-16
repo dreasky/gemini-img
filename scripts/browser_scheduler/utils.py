@@ -1,20 +1,15 @@
 """
 Utility functions for browser automation.
-
-Provides both sync and async versions of common operations.
 """
 
 import re
-from typing import Awaitable, Callable
+from typing import Awaitable
 
 
 def _normalize_text(text: str) -> str:
     """Normalize text for input: collapse multiple blank lines into one."""
-    # Replace 2+ consecutive blank lines with a single blank line
     text = re.sub(r'\n{3,}', '\n\n', text)
-    # Strip leading/trailing whitespace
-    text = text.strip()
-    return text
+    return text.strip()
 
 
 def insert_text_with_newlines(
@@ -26,24 +21,14 @@ def insert_text_with_newlines(
     Insert text into a contenteditable element, preserving newlines.
 
     Strategy (ordered by reliability):
-    1. Quill API — if Quill instance is found, uses quill.clipboard.dangerouslyPasteHTML
-       which properly updates Quill's internal model AND the DOM.
-    2. DOM API fallback — for non-Quill editors, builds nodes with createElement.
+    1. Quill Delta API — uses quill.setContents() with Delta objects.
+       Bypasses innerHTML entirely (no Trusted Types violation)
+       and correctly updates Quill's internal model.
+    2. DOM API fallback — for non-Quill editors.
 
     Text normalization:
     - Collapses 3+ consecutive newlines into 2 (one blank line)
     - Strips leading/trailing whitespace
-
-    IMPORTANT: Does NOT use innerHTML directly (Trusted Types CSP violation).
-    IMPORTANT: Does NOT use busy-wait in JS (blocks browser main thread).
-
-    Args:
-        page: Playwright page object (sync or async)
-        selector: CSS selector for the contenteditable element
-        text: Text to insert (can contain \\n for newlines)
-
-    Returns:
-        Awaitable if page is async, or direct result if sync
     """
     text = _normalize_text(text)
 
@@ -53,15 +38,10 @@ def insert_text_with_newlines(
 
         function findEditor() {
             const bySelector = document.querySelector(selector);
-            if (bySelector && bySelector.isContentEditable) {
-                return bySelector;
-            }
+            if (bySelector && bySelector.isContentEditable) return bySelector;
             const candidates = [
                 '.ql-editor',
-                '.ql-editor[contenteditable="true"]',
                 'div[contenteditable="true"]',
-                'div[contenteditable="plaintext-only"]',
-                '[data-test-id*="input"]',
                 'div[role="textbox"]',
             ];
             for (let i = 0; i < candidates.length; i++) {
@@ -75,51 +55,37 @@ def insert_text_with_newlines(
             return null;
         }
 
-        const editor = findEditor();
-        if (!editor) {
-            throw new Error('No contenteditable element found.');
+        function findQuill(editor) {
+            const qlContainer = editor.closest('.ql-container') || editor.parentElement;
+            if (qlContainer && qlContainer.__quill) return qlContainer.__quill;
+            if (editor.__quill) return editor.__quill;
+            return null;
         }
 
+        const editor = findEditor();
+        if (!editor) throw new Error('No contenteditable element found.');
         editor.focus();
 
-        // ---- Strategy 1: Quill API ----
-        // Quill stores its instance on the .ql-container parent element
-        const qlContainer = editor.closest('.ql-container') || editor.parentElement;
-        if (qlContainer) {
-            // Quill attaches __quill on the .ql-container or .ql-editor depending on version
-            const quill = qlContainer.__quill
-                || (qlContainer.querySelector('.ql-editor') || {}).__quill
-                || editor.__quill;
-            if (quill && quill.clipboard && quill.clipboard.dangerouslyPasteHTML) {
-                // Build HTML string for Quill — dangerouslyPasteHTML bypasses
-                // innerHTML assignment (it uses its own parser that satisfies Trusted Types)
-                const lines = text.split('\\n');
-                let html = '';
-                for (let i = 0; i < lines.length; i++) {
-                    if (lines[i]) {
-                        html += '<p>' + lines[i] + '</p>';
-                    } else {
-                        html += '<p><br></p>';
-                    }
-                }
-                quill.clipboard.dangerouslyPasteHTML(html);
-                quill.setSelection(quill.getLength(), 0);
-                return;
+        const quill = findQuill(editor);
+        if (quill && quill.setContents) {
+            const lines = text.split('\\n');
+            var ops = [];
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i]) ops.push({ insert: lines[i] });
+                if (i < lines.length - 1) ops.push({ insert: '\\n' });
             }
+            if (ops.length === 0) ops.push({ insert: '\\n' });
+            quill.setContents({ ops: ops });
+            quill.setSelection(quill.getLength(), 0);
+            return;
         }
 
-        // ---- Strategy 2: DOM API fallback (non-Quill) ----
-        while (editor.firstChild) {
-            editor.removeChild(editor.firstChild);
-        }
+        // DOM API fallback
+        while (editor.firstChild) editor.removeChild(editor.firstChild);
         const lines = text.split('\\n');
-        for (let i = 0; i < lines.length; i++) {
-            const p = document.createElement('p');
-            if (lines[i]) {
-                p.appendChild(document.createTextNode(lines[i]));
-            } else {
-                p.appendChild(document.createElement('br'));
-            }
+        for (var i = 0; i < lines.length; i++) {
+            var p = document.createElement('p');
+            p.appendChild(lines[i] ? document.createTextNode(lines[i]) : document.createElement('br'));
             editor.appendChild(p);
         }
         editor.dispatchEvent(new Event('input', { bubbles: true }));
@@ -128,39 +94,26 @@ def insert_text_with_newlines(
     return page.evaluate(js_code, [selector, text])
 
 
-def clear_contenteditable(
-    page,
-    selector: str,
-) -> Awaitable:
-    """
-    Clear a contenteditable element.
-
-    Args:
-        page: Playwright page object
-        selector: CSS selector for the element
-
-    Returns:
-        Awaitable if page is async, or direct result if sync
-    """
+def clear_contenteditable(page, selector: str) -> Awaitable:
+    """Clear a contenteditable element. Uses Quill Delta API or DOM API."""
     js_code = """
     (selector) => {
-        const el = document.querySelector(selector);
-        if (el) {
-            // Clear using DOM API only (avoids TrustedHTML violation)
-            while (el.firstChild) {
-                el.removeChild(el.firstChild);
-            }
-
-            // Quill editor expects at least <p><br></p>
-            if (el.classList.contains('ql-editor')) {
-                const p = document.createElement('p');
-                p.appendChild(document.createElement('br'));
-                el.appendChild(p);
-            }
-
-            // Dispatch input event
-            el.dispatchEvent(new Event('input', { bubbles: true }));
+        var el = document.querySelector(selector);
+        if (!el) return;
+        var qlContainer = el.closest('.ql-container') || el.parentElement;
+        var quill = (qlContainer && qlContainer.__quill) || el.__quill || null;
+        if (quill && quill.setContents) {
+            quill.setContents({ ops: [{ insert: '\\n' }] });
+            quill.setSelection(0, 0);
+            return;
         }
+        while (el.firstChild) el.removeChild(el.firstChild);
+        if (el.classList.contains('ql-editor')) {
+            var p = document.createElement('p');
+            p.appendChild(document.createElement('br'));
+            el.appendChild(p);
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
     }
     """
     return page.evaluate(js_code, selector)

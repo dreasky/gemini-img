@@ -111,6 +111,9 @@ async def run(ctx, input: str, task_id: str, output: str | None):
         headless=ctx.obj["headless"],
     )
 
+    # Scan first — ensures task exists even if store JSON was deleted
+    executor.scan_prompts()
+
     task = await executor.run_task(task_id)
     if not task:
         click.echo(f"Task not found: {task_id}", err=True)
