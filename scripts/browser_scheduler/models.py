@@ -46,6 +46,15 @@ class Task:
     completed_at: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
+    def __post_init__(self):
+        """
+        Post-initialization processing.
+
+        Automatically cleans the 'data' field upon instantiation.
+        """
+        if isinstance(self.data, str):
+            self.data = self._clean_content(self.data)
+
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
         result = asdict(self)
@@ -68,17 +77,28 @@ class Task:
         task.extra = extra
         return task
 
-    @classmethod
-    def from_file(cls, path: Path) -> "Task":
-        """Create task from markdown prompt file."""
-        content = path.read_text(encoding="utf-8")
+    @staticmethod
+    def _clean_content(text: str) -> str:
+        """
+        Clean content by removing common formatting.
 
-        # 去除粗体/斜体符号
-        content = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", content)
-        # 去除首尾空白
-        content = content.strip()
+        Removes:
+        - Markdown bold/italic (*text*, **text**)
+        - Inline code (`code`)
+        - Excessive newlines (converts \n\n+ to single \n)
+        - Excessive whitespace
+        """
+        if not text:
+            return ""
 
-        return cls(id=path.stem, data=content)
+        # Remove markdown bold/italic
+        text = re.sub(r"\*\*?(.+?)\*\*?", r"\1", text)
+        # Remove inline code
+        text = re.sub(r"`{1,3}(.+?)`{1,3}", r"\1", text, flags=re.DOTALL)
+        # Remove excessive newlines
+        text = re.sub(r"\n{2,}", "\n", text)
+        # Clean up whitespace
+        return text.strip()
 
     def touch(self) -> None:
         """Update timestamp."""
@@ -234,7 +254,7 @@ class TaskStore:
                 content = file_path.read_text(encoding="utf-8")
                 task = Task(
                     id=task_id,
-                    data=self._clean_content(content),
+                    data=content,
                     output_path=output_path,
                 )
             self.add(task)
@@ -244,23 +264,6 @@ class TaskStore:
             self.save()
 
         return count
-
-    @staticmethod
-    def _clean_content(text: str) -> str:
-        """
-        Clean content by removing common formatting.
-
-        Removes:
-        - Markdown bold/italic (*text*, **text**)
-        - Inline code (`code`)
-        - Excessive whitespace
-        """
-        # Remove markdown bold/italic
-        text = re.sub(r"\*\*?(.+?)\*\*?", r"\1", text)
-        # Remove inline code
-        text = re.sub(r"`{1,3}(.+?)`{1,3}", r"\1", text, flags=re.DOTALL)
-        # Clean up whitespace
-        return text.strip()
 
     def get_output_path(self, task_id: str, ext: str = ".png") -> str:
         """Get default output path for task."""
