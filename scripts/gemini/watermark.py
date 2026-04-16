@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 
-def remove_gemini_watermark(image_path: Path) -> bool:
+def remove_gemini_watermark(image_path) -> bool:
     """
     Remove Gemini sparkle watermark from image.
 
@@ -16,6 +16,9 @@ def remove_gemini_watermark(image_path: Path) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    if isinstance(image_path, str):
+        image_path = Path(image_path)
+
     if not image_path.exists():
         return False
 
@@ -27,7 +30,8 @@ def remove_gemini_watermark(image_path: Path) -> bool:
             timeout=30,
         )
         return result.returncode == 0
-    except Exception:
+    except Exception as e:
+        print(e)
         return False
 
 

@@ -75,7 +75,8 @@ def ensure_node_deps():
     """Ensure Node.js dependencies are up-to-date (mirrors ensure_deps)."""
     skill_dir = Path(__file__).parent.parent
     package_json = skill_dir / "package.json"
-    hash_file = skill_dir / ".node_modules.hash"
+    node_modules = skill_dir / "node_modules"
+    hash_file = node_modules / ".node_modules.hash"
 
     if not package_json.exists():
         return
