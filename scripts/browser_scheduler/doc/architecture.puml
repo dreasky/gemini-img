@@ -7,20 +7,22 @@ skinparam packageStyle folder
 ' 标题
 title browser_scheduler - 浏览器自动化任务调度框架
 
-' 核心模型层
+' 核心模型层（models.py）
 package "models.py" {
     class Task {
         +id: str
         +data: str
         +status: TaskStatus
-        +output_path: str
+        +output_path: Path
         +retry_count: int
         +error: str
         +created_at: str
         +completed_at: str
+        +extra: dict
         --
         +to_dict(): dict
         +from_dict(): Task
+        +from_file(path): Task
     }
 
     enum TaskStatus {
@@ -28,14 +30,12 @@ package "models.py" {
         RUNNING
         COMPLETED
         FAILED
-        RETRYING
     }
-}
 
-' 存储层
-package "handlers.py" {
-    class Store {
-        -_tasks: Dict[str, Task]
+    class TaskStore {
+        +input_dir: Path
+        +output_dir: Path
+        +json_file: Path
         --
         +add(task)
         +get(id): Task
@@ -43,24 +43,19 @@ package "handlers.py" {
         +all(): List[Task]
         +filter(status): List[Task]
         +save()
-        +stats(): dict
+        +stats: dict
+        +scan_files(pattern, extractor, output_ext): int
+        +reset_failed(): int
         --
-        #_load()
+        -_load()
+        -_save()
+        -_clean_content(text): str
     }
+
+    TaskStore ..> Task : manages
 }
 
-package "file_store.py" {
-    class FileScanningStore {
-        +tasks_dir: Path
-        +output_dir: Path
-        --
-        +scan_files(pattern): int
-        #_clean_content(text): str
-    }
-    Store <|-- FileScanningStore
-}
-
-' 执行上下文
+' 执行上下文（handlers.py）
 package "handlers.py" {
     class Context {
         +task: Task
@@ -75,15 +70,17 @@ package "handlers.py" {
     abstract class Handler {
         +{abstract} execute(ctx: Context): Result
     }
+
+    Context ..> Task : contains
+    Handler ..> Context : uses
+    Handler ..> Result : returns
 }
 
-' 浏览器管理
+' 浏览器管理（browser.py）
 package "browser.py" {
     class BrowserManager {
         +storage_path: Path
         +headless: bool
-        -_browser: Browser
-        -_context: BrowserContext
         --
         +launch()
         +new_page(): Page
@@ -92,7 +89,7 @@ package "browser.py" {
     }
 }
 
-' 执行器
+' 执行器（executor.py）
 package "executor.py" {
     class ExecutionResult {
         +total: int
@@ -102,7 +99,7 @@ package "executor.py" {
     }
 
     abstract class BaseExecutor {
-        +store: Store
+        +store: TaskStore
         +browser: BrowserManager
         --
         +run_task(task_id): Task
@@ -110,9 +107,13 @@ package "executor.py" {
         --
         #run_single_task(task, page): Task
     }
+
+    BaseExecutor ..> TaskStore : uses
+    BaseExecutor ..> BrowserManager : uses
+    BaseExecutor ..> ExecutionResult : returns
 }
 
-' 重试机制
+' 重试机制（retry.py）
 package "retry.py" {
     class retry {
         +{static} async call(fn, max_retries, base_delay): RetryResult
@@ -123,9 +124,11 @@ package "retry.py" {
         +error: str
         +attempts: int
     }
+
+    retry ..> RetryResult : returns
 }
 
-' 工具函数
+' 工具函数（utils.py）
 package "utils.py" {
     class BrowserUtils {
         +{static} insert_text_with_newlines(page, selector, text)
@@ -133,19 +136,16 @@ package "utils.py" {
     }
 }
 
-' 关系
-Context ..> Task : contains
-Handler ..> Context : uses
-Handler ..> Result : returns
+' 外部依赖
+package "外部依赖" #LightBlue {
+    class "playwright.async_api" as Playwright {
+        Browser
+        BrowserContext
+        Page
+    }
+}
 
-BaseExecutor ..> Store : uses
-BaseExecutor ..> BrowserManager : uses
-BaseExecutor ..> ExecutionResult : returns
-
-FileScanningStore ..> Task : creates
-
-retry ..> RetryResult : returns
-
-BrowserUtils ..> BrowserManager : used by
+BrowserManager ..> Playwright : uses
+Handler ..> Playwright : uses
 
 @enduml
