@@ -3,7 +3,6 @@
 import json
 import re
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional, List, Dict, Callable
@@ -41,9 +40,6 @@ class Task:
     output_path: Optional[Path] = None
     error: Optional[str] = None
     retry_count: int = 0
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    completed_at: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -66,13 +62,16 @@ class Task:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
-        """Create from dict."""
+        """Create from dict. Ignores unknown fields for forward compatibility."""
         data = dict(data)  # copy
         data["status"] = TaskStatus(data.pop("status"))
         extra = data.pop("extra", {})
         # Convert string back to Path for output_path
         if data.get("output_path"):
             data["output_path"] = Path(data["output_path"])
+        # Ignore unknown fields (e.g. legacy created_at/updated_at/completed_at)
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        data = {k: v for k, v in data.items() if k in known}
         task = cls(**data)
         task.extra = extra
         return task
@@ -100,9 +99,6 @@ class Task:
         # Clean up whitespace
         return text.strip()
 
-    def touch(self) -> None:
-        """Update timestamp."""
-        self.updated_at = datetime.now().isoformat()
 
 
 class TaskStore:
