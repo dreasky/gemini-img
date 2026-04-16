@@ -282,53 +282,39 @@ class GeminiHandler(Handler):
         return False
 
     async def download_image(self, page) -> Optional[bytes]:
-        """Download the generated image."""
+        """Download the full-size generated image.
+
+        Primary: uses Playwright's download event to capture the real file
+        triggered by the download button — this gets the original full-res image.
+        Fallback: canvas export (lossy re-compression, smaller file).
+        """
         try:
             await page.wait_for_selector(IMAGE_ELEMENT_SELECTOR, timeout=20_000)
-        except Exception as e:
-            print("图片下载失败", e)
+        except Exception:
             pass
 
-        img_data = await self._intercept_fullsize_image(page)
-        if img_data:
-            return img_data
+        # Primary: capture the real download
+        try:
+            async with page.expect_download(timeout=30_000) as download_info:
+                more_btn = await page.wait_for_selector(MORE_MENU_SELECTOR, timeout=10_000)
+                await more_btn.click()
+                await page.wait_for_timeout(500)
+
+                dl_btn = await page.wait_for_selector(DOWNLOAD_BTN_SELECTOR, timeout=10_000)
+                await dl_btn.click()
+
+            download = await download_info.value
+            # Read the downloaded file into memory
+            tmp_path = await download.path()
+            if tmp_path and tmp_path.exists():
+                return tmp_path.read_bytes()
+        except Exception:
+            pass
+
+        # Fallback: canvas export (lossy, smaller than original)
         return await self._canvas_fallback(page)
 
     # ── Private download helpers ──────────────────────────────────────
-
-    async def _intercept_fullsize_image(self, page) -> Optional[bytes]:
-        """Intercept full-size image from network."""
-        fullsize_images = []
-
-        async def _on_response(response):
-            ct = response.headers.get("content-type", "")
-            if any(t in ct for t in ("image/jpeg", "image/png", "image/webp")):
-                try:
-                    body = await response.body()
-                    if len(body) >= 200_000:
-                        fullsize_images.append((response.url, body))
-                except Exception:
-                    pass
-
-        page.on("response", _on_response)
-        try:
-            more_btn = await page.wait_for_selector(MORE_MENU_SELECTOR, timeout=10_000)
-            await more_btn.click()
-
-            dl_btn = await page.wait_for_selector(DOWNLOAD_BTN_SELECTOR, timeout=10_000)
-            await dl_btn.click()
-
-            for _ in range(60):
-                if fullsize_images:
-                    break
-                await page.wait_for_timeout(500)
-        finally:
-            page.remove_listener("response", _on_response)
-
-        if fullsize_images:
-            _, body = max(fullsize_images, key=lambda x: len(x[1]))
-            return body
-        return None
 
     async def _canvas_fallback(self, page) -> Optional[bytes]:
         """Extract image via canvas export."""
