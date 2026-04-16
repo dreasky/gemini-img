@@ -1,5 +1,6 @@
 """Gemini-specific handlers and store."""
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -49,14 +50,41 @@ class GeminiHandler(Handler):
     # ── Main execution flow ──────────────────────────────────────────
 
     async def execute(self, ctx: Context) -> Result:
-        """Generate image - full implementation."""
+        """Generate image - full implementation.
+
+        Supports retry: if task.extra["conversation_url"] exists, opens that
+        URL directly. If the image is already generated (e.g. previous timeout),
+        downloads it without re-submitting.
+        """
         task = ctx.task
         page = ctx.page
 
         try:
-            input_sel = await self.navigate_and_wait(page)
+            # Navigate — reuse conversation URL on retry, or start fresh
+            conversation_url = task.extra.get("conversation_url")
+            start_url = conversation_url or GEMINI_URL
+
+            await page.goto(start_url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(1500)
+
+            if "accounts.google.com" in page.url:
+                return Result(success=False, error="Session expired - run login")
+
+            # On retry with conversation URL: check if image is already ready
+            if conversation_url:
+                if await self._check_image_ready(page):
+                    # Image already generated — just download
+                    img_data = await self.download_image(page)
+                    if not img_data:
+                        return Result(success=False, error="Image ready but download failed")
+                    if task.output_path:
+                        task.output_path.write_bytes(img_data)
+                    return Result(success=True)
+
+            # Fresh task or image not ready yet — need to submit prompt
+            input_sel = await self.wait_for_input_box(page)
             if not input_sel:
-                return Result(success=False, error="Session expired or page not ready")
+                return Result(success=False, error="Input box not found after page load")
 
             if not await self.click_tools_button(page):
                 return Result(success=False, error="Failed to click tools button")
@@ -71,6 +99,13 @@ class GeminiHandler(Handler):
                 )
 
             await self.input_and_send(page, input_sel, task.data)
+
+            # Wait for URL to change from /app to /app/{conversation_id}
+            try:
+                await page.wait_for_url(re.compile(r"/app/[a-f0-9]+$"), timeout=5_000)
+            except Exception:
+                pass
+            task.extra["conversation_url"] = page.url
 
             if not await self.wait_for_image_ready(page):
                 return Result(success=False, error="Image generation timeout")
@@ -88,18 +123,13 @@ class GeminiHandler(Handler):
         except Exception as e:
             return Result(success=False, error=str(e))
 
-    # ── Page setup ────────────────────────────────────────────────────
-
-    async def navigate_and_wait(self, page) -> Optional[str]:
-        """Navigate to Gemini, wait for page ready. Returns input selector or None."""
-        await page.goto(GEMINI_URL, wait_until="domcontentloaded")
-
-        # Wait for possible session redirect
-        await page.wait_for_timeout(1500)
-        if "accounts.google.com" in page.url:
-            return None
-
-        return await self.wait_for_input_box(page)
+    async def _check_image_ready(self, page) -> bool:
+        """Quick check if image is already generated on the page."""
+        try:
+            el = await page.query_selector(IMAGE_READY_SELECTOR)
+            return el is not None
+        except Exception:
+            return False
 
     # ── Input helpers ─────────────────────────────────────────────────
 
@@ -255,7 +285,8 @@ class GeminiHandler(Handler):
         """Download the generated image."""
         try:
             await page.wait_for_selector(IMAGE_ELEMENT_SELECTOR, timeout=20_000)
-        except Exception:
+        except Exception as e:
+            print("图片下载失败", e)
             pass
 
         img_data = await self._intercept_fullsize_image(page)
