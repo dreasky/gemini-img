@@ -102,7 +102,7 @@ class SkillEnvironment:
         """Run npm install for Node.js dependencies; skip if package.json unchanged."""
         package_json = self.skill_dir / "package.json"
         node_modules = self.skill_dir / "node_modules"
-        hash_file = self.skill_dir / ".node_modules.hash"
+        hash_file = node_modules / ".node_modules.hash"
 
         if not package_json.exists():
             return True  # nothing to install
