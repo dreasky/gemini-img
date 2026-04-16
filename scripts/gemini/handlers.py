@@ -65,15 +65,17 @@ class GeminiHandler(Handler):
             start_url = conversation_url or GEMINI_URL
 
             await page.goto(start_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(1500)
+
+            # Brief wait for possible session redirect to complete
+            await page.wait_for_timeout(500)
 
             if "accounts.google.com" in page.url:
                 return Result(success=False, error="Session expired - run login")
 
             # On retry with conversation URL: check if image is already ready
             if conversation_url:
-                # Give the page time to render the image area
-                await page.wait_for_timeout(3000)
+                # Wait for page to stabilize, then check
+                await self.wait_for_input_box(page, timeout=10_000)
                 if await self._check_image_ready(page):
                     # Image already generated — just download
                     img_data = await self.download_image(page)
@@ -162,58 +164,58 @@ class GeminiHandler(Handler):
 
     # ── Tools flow ────────────────────────────────────────────────────
 
-    async def click_tools_button(self, page) -> bool:
-        """Click the tools button to open the tools drawer."""
+    async def click_tools_button(self, page, timeout: int = 15_000) -> bool:
+        """Click the tools button to open the tools drawer.
+
+        Waits up to `timeout` ms for the button to appear, then clicks.
+        """
         for sel in TOOLS_BTN_SEL.split(","):
             sel = sel.strip()
             if not sel:
                 continue
             try:
-                btn = await page.query_selector(sel)
-                if not btn:
-                    btn = await page.wait_for_selector(sel, timeout=5_000)
+                btn = await page.wait_for_selector(sel, timeout=timeout)
                 if btn:
                     await btn.click()
-                    await page.wait_for_timeout(1000)
                     return True
             except Exception:
                 continue
 
-        # Fallback: find by text
+        # Fallback: find by aria-label "工具"
         try:
             handle = await page.evaluate_handle(
                 """() => {
                 const btns = Array.from(document.querySelectorAll('button'));
-                return btns.find(b => b.textContent && b.textContent.includes('工具'));
+                return btns.find(b => b.getAttribute('aria-label') === '工具');
             }"""
             )
             el = handle.as_element()
             if el:
                 await el.click()
-                await page.wait_for_timeout(1000)
                 return True
         except Exception:
             pass
         return False
 
-    async def click_make_image_chip(self, page) -> bool:
-        """Click the '制作图片' chip in the tools drawer."""
+    async def click_make_image_chip(self, page, timeout: int = 10_000) -> bool:
+        """Click the '制作图片' chip in the tools drawer.
+
+        Waits up to `timeout` ms for the chip to appear after the
+        tools drawer opens, then clicks.
+        """
         for sel in MAKE_IMAGE_CHIP_SEL.split(","):
             sel = sel.strip()
             if not sel:
                 continue
             try:
-                chip = await page.query_selector(sel)
-                if not chip:
-                    chip = await page.wait_for_selector(sel, timeout=5_000)
+                chip = await page.wait_for_selector(sel, timeout=timeout)
                 if chip:
                     await chip.click()
-                    await page.wait_for_timeout(2000)
                     return True
             except Exception:
                 continue
 
-        # Fallback: find by text
+        # Fallback: find by aria-label
         try:
             handle = await page.evaluate_handle(
                 """() => {
@@ -224,7 +226,6 @@ class GeminiHandler(Handler):
             el = handle.as_element()
             if el:
                 await el.click()
-                await page.wait_for_timeout(2000)
                 return True
         except Exception:
             pass
