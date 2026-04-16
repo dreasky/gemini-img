@@ -229,9 +229,15 @@ class TaskStore:
 
         for file_path in self.input_dir.glob(pattern):
             task_id = file_path.stem
-            task = self._tasks.get(task_id)
-            if task and task.status == TaskStatus.COMPLETED:
+            existing = self._tasks.get(task_id)
+
+            # Completed tasks are never overwritten
+            if existing and existing.status == TaskStatus.COMPLETED:
                 continue
+
+            # For pending/failed tasks: preserve existing extra dict
+            # (may contain conversation_url etc. from prior attempts)
+            preserve_extra = existing.extra if existing else {}
 
             # Default output path
             output_path = self.output_dir / f"{task_id}{output_ext}"
@@ -243,15 +249,16 @@ class TaskStore:
                     id=task_id,
                     data=extracted.get("data", file_path.read_text(encoding="utf-8")),
                     output_path=extracted.get("output_path", str(output_path)),
-                    extra=extracted.get("extra", {}),
+                    extra={**preserve_extra, **extracted.get("extra", {})},
                 )
             else:
                 # Default: read text content
                 content = file_path.read_text(encoding="utf-8")
                 task = Task(
                     id=task_id,
-                    data=content,
+                    data=self._clean_content(content),
                     output_path=output_path,
+                    extra=preserve_extra,
                 )
             self.add(task)
             count += 1
