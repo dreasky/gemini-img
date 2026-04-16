@@ -155,51 +155,6 @@ python scripts/run.py cleaner.py batch ./output/ -r --dry-run   # 预览，不�
 
 ---
 
-## 架构说明
-
-### browser_scheduler 框架
-
-通用浏览器自动化任务调度框架，位于 `scripts/browser_scheduler/`：
-
-```
-browser_scheduler/
-├── __init__.py       # 导出所有组件
-├── models.py         # Task/TaskStatus/TaskStore
-├── handlers.py       # Handler/Context/Result
-├── browser.py        # BrowserManager
-├── executor.py       # BaseExecutor
-├── retry.py          # retry/retry_sync
-└── utils.py          # insert_text_with_newlines
-```
-
-### 复用方式
-
-复制 `browser_scheduler/` 目录到其他项目即可复用：
-
-```python
-from browser_scheduler import TaskStore, Task, TaskStatus, BrowserManager, BaseExecutor
-from pathlib import Path
-
-# 1. 扫描文件创建任务
-store = TaskStore(Path("./input"), Path("./output"))
-store.scan_files("*.md")
-
-# 2. 定义执行器
-class MyExecutor(BaseExecutor):
-    async def run_single_task(self, task, page):
-        await page.fill("input", task.data)
-        await page.click("button")
-        task.status = TaskStatus.COMPLETED
-        return task
-
-# 3. 执行
-browser = BrowserManager(".data/session.json")
-executor = MyExecutor(store, browser, headless=True)
-result = await executor.run_all()
-```
-
----
-
 ## 错误处理
 
 | 情形                  | 处理方式                  |

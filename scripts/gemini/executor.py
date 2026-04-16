@@ -6,8 +6,6 @@ from typing import Optional
 from browser_scheduler import (
     BaseExecutor,
     BrowserManager,
-    Context,
-    ExecutionResult,
     Task,
     TaskStatus,
     insert_text_with_newlines,
