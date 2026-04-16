@@ -284,27 +284,49 @@ class GeminiHandler(Handler):
     async def download_image(self, page) -> Optional[bytes]:
         """Download the full-size generated image.
 
-        Primary: uses Playwright's download event to capture the real file
-        triggered by the download button — this gets the original full-res image.
-        Fallback: canvas export (lossy re-compression, smaller file).
+        Strategy 1: Click the direct download button that appears after generation.
+        Strategy 2: Click more menu → download (for older UI or different states).
+        Uses Playwright's expect_download to capture the real file.
         """
         try:
             await page.wait_for_selector(IMAGE_ELEMENT_SELECTOR, timeout=20_000)
         except Exception:
             pass
 
-        # Primary: capture the real download
+        # Strategy 1: Direct download button
+        try:
+            dl_btn = await page.wait_for_selector(
+                'button[data-test-id="download-generated-image-button"]',
+                timeout=5_000,
+            )
+            if dl_btn:
+                async with page.expect_download(timeout=30_000) as download_info:
+                    await dl_btn.click()
+                download = await download_info.value
+                tmp_path = await download.path()
+                if tmp_path and tmp_path.exists():
+                    return tmp_path.read_bytes()
+        except Exception:
+            pass
+
+        # Strategy 2: More menu → Download
         try:
             async with page.expect_download(timeout=30_000) as download_info:
-                more_btn = await page.wait_for_selector(MORE_MENU_SELECTOR, timeout=10_000)
+                # Find the more menu button scoped to image area
+                # Avoid conversation-actions-menu at the top of the page
+                more_btn = await page.wait_for_selector(
+                    'button[data-test-id="more-menu-button"]',
+                    timeout=5_000,
+                )
                 await more_btn.click()
                 await page.wait_for_timeout(500)
 
-                dl_btn = await page.wait_for_selector(DOWNLOAD_BTN_SELECTOR, timeout=10_000)
+                dl_btn = await page.wait_for_selector(
+                    DOWNLOAD_BTN_SELECTOR, timeout=5_000
+                )
                 await dl_btn.click()
 
             download = await download_info.value
-            # Read the downloaded file into memory
             tmp_path = await download.path()
             if tmp_path and tmp_path.exists():
                 return tmp_path.read_bytes()
