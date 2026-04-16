@@ -100,7 +100,6 @@ class Task:
         return text.strip()
 
 
-
 class TaskStore:
     """
     JSON file store for tasks.
@@ -256,7 +255,7 @@ class TaskStore:
                 content = file_path.read_text(encoding="utf-8")
                 task = Task(
                     id=task_id,
-                    data=self._clean_content(content),
+                    data=content,
                     output_path=output_path,
                     extra=preserve_extra,
                 )
