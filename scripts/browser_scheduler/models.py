@@ -126,7 +126,7 @@ class TaskStore:
             data = json.loads(self.json_file.read_text(encoding="utf-8"))
             self._tasks = {k: Task.from_dict(v) for k, v in data.items()}
 
-    def _save(self) -> None:
+    def save(self) -> None:
         """Save to JSON."""
         self.json_file.parent.mkdir(parents=True, exist_ok=True)
         data = {k: v.to_dict() for k, v in self._tasks.items()}
@@ -240,7 +240,7 @@ class TaskStore:
             count += 1
 
         if count > 0:
-            self._save()
+            self.save()
 
         return count
 

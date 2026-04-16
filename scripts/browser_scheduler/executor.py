@@ -78,7 +78,7 @@ class BaseExecutor:
             result = task
         finally:
             await page.close()
-            self.store._save()
+            self.store.save()
 
         return result
 

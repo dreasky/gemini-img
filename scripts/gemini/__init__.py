@@ -4,12 +4,11 @@ from browser_scheduler import (
     BrowserManager,
     Context,
     ExecutionResult,
-    FileScanningStore,
     Handler,
     Result,
-    Store,
     Task,
     TaskStatus,
+    TaskStore,
     insert_text_with_newlines,
 )
 
@@ -23,12 +22,11 @@ __all__ = [
     "BrowserManager",
     "Context",
     "ExecutionResult",
-    "FileScanningStore",
     "Handler",
     "Result",
-    "Store",
     "Task",
     "TaskStatus",
+    "TaskStore",
     "insert_text_with_newlines",
     # Gemini-specific
     "BrowserGenerationError",

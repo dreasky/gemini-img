@@ -186,7 +186,7 @@ def retry(input: str, failed_only: bool):
             if task.status in (TaskStatus.PENDING, TaskStatus.FAILED):
                 task.status = TaskStatus.PENDING
                 count += 1
-        executor.store._save()
+        executor.store.save()
 
     click.echo(f"Reset {count} tasks. Run 'batch' to execute.")
 
@@ -220,7 +220,7 @@ def clear(input: str):
     completed = executor.store.completed
     for task in completed:
         executor.store.remove(task.id)
-    executor.store._save()
+    executor.store.save()
 
     click.echo(f"Cleared {len(completed)} tasks.")
 

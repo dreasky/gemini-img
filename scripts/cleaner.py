@@ -2,8 +2,8 @@
 Remove the Gemini sparkle watermark from PNG images.
 
 Usage:
-    python remove_watermark.py FILE [FILE ...]
-    python remove_watermark.py batch DIR [--recursive]
+    python cleaner.py remove FILE [FILE ...]
+    python cleaner.py batch DIR [--recursive]
 """
 
 import sys
@@ -57,7 +57,7 @@ def batch(directory, recursive, dry_run):
     ok = fail = 0
     for f in files:
         click.echo(f"处理: {f}", nl=False)
-        if remove_gemini_watermark(str(f)):
+        if remove_gemini_watermark(f):
             click.echo(" [已移除]")
             ok += 1
         else:
