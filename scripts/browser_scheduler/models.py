@@ -213,7 +213,8 @@ class TaskStore:
 
         for file_path in self.input_dir.glob(pattern):
             task_id = file_path.stem
-            if task_id in self._tasks:
+            task = self._tasks.get(task_id)
+            if task and task.status == TaskStatus.COMPLETED:
                 continue
 
             # Default output path
