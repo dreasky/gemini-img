@@ -81,7 +81,7 @@ class GeminiHandler(Handler):
 
             if task.output_path:
                 task.output_path.write_bytes(img_data)
-                remove_gemini_watermark(task.output_path)
+                # remove_gemini_watermark(task.output_path)
 
             return Result(success=True)
 
