@@ -1,0 +1,151 @@
+@startuml browser_scheduler_architecture
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam packageStyle folder
+
+' 标题
+title browser_scheduler - 浏览器自动化任务调度框架
+
+' 核心模型层
+package "models.py" {
+    class Task {
+        +id: str
+        +data: str
+        +status: TaskStatus
+        +output_path: str
+        +retry_count: int
+        +error: str
+        +created_at: str
+        +completed_at: str
+        --
+        +to_dict(): dict
+        +from_dict(): Task
+    }
+
+    enum TaskStatus {
+        PENDING
+        RUNNING
+        COMPLETED
+        FAILED
+        RETRYING
+    }
+}
+
+' 存储层
+package "handlers.py" {
+    class Store {
+        -_tasks: Dict[str, Task]
+        --
+        +add(task)
+        +get(id): Task
+        +remove(id): bool
+        +all(): List[Task]
+        +filter(status): List[Task]
+        +save()
+        +stats(): dict
+        --
+        #_load()
+    }
+}
+
+package "file_store.py" {
+    class FileScanningStore {
+        +tasks_dir: Path
+        +output_dir: Path
+        --
+        +scan_files(pattern): int
+        #_clean_content(text): str
+    }
+    Store <|-- FileScanningStore
+}
+
+' 执行上下文
+package "handlers.py" {
+    class Context {
+        +task: Task
+        +page: Any
+    }
+
+    class Result {
+        +success: bool
+        +error: str
+    }
+
+    abstract class Handler {
+        +{abstract} execute(ctx: Context): Result
+    }
+}
+
+' 浏览器管理
+package "browser.py" {
+    class BrowserManager {
+        +storage_path: Path
+        +headless: bool
+        -_browser: Browser
+        -_context: BrowserContext
+        --
+        +launch()
+        +new_page(): Page
+        +close()
+        +login_sync(login_url)
+    }
+}
+
+' 执行器
+package "executor.py" {
+    class ExecutionResult {
+        +total: int
+        +completed: int
+        +failed: int
+        +duration_seconds: float
+    }
+
+    abstract class BaseExecutor {
+        +store: Store
+        +browser: BrowserManager
+        --
+        +run_task(task_id): Task
+        +run_all(on_progress): ExecutionResult
+        --
+        #run_single_task(task, page): Task
+    }
+}
+
+' 重试机制
+package "retry.py" {
+    class retry {
+        +{static} async call(fn, max_retries, base_delay): RetryResult
+    }
+
+    class RetryResult {
+        +success: bool
+        +error: str
+        +attempts: int
+    }
+}
+
+' 工具函数
+package "utils.py" {
+    class BrowserUtils {
+        +{static} insert_text_with_newlines(page, selector, text)
+        +{static} clear_contenteditable(page, selector)
+    }
+}
+
+' 关系
+Context ..> Task : contains
+Handler ..> Context : uses
+Handler ..> Result : returns
+
+BaseExecutor ..> Store : uses
+BaseExecutor ..> BrowserManager : uses
+BaseExecutor ..> ExecutionResult : returns
+
+FileScanningStore ..> Task : creates
+
+retry ..> RetryResult : returns
+
+BrowserUtils ..> BrowserManager : used by
+
+@enduml
