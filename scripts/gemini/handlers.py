@@ -46,6 +46,48 @@ class GeminiHandler(Handler):
         self.quality_suffix = quality_suffix
         self.image_timeout = image_timeout
 
+    # ── Main execution flow ──────────────────────────────────────────
+
+    async def execute(self, ctx: Context) -> Result:
+        """Generate image - full implementation."""
+        task = ctx.task
+        page = ctx.page
+
+        try:
+            input_sel = await self.navigate_and_wait(page)
+            if not input_sel:
+                return Result(success=False, error="Session expired or page not ready")
+
+            if not await self.click_tools_button(page):
+                return Result(success=False, error="Failed to click tools button")
+
+            if not await self.click_make_image_chip(page):
+                return Result(success=False, error="Failed to click make image chip")
+
+            input_sel = await self.wait_for_input_box(page, timeout=15_000)
+            if not input_sel:
+                return Result(
+                    success=False, error="Input box not found after clicking make image"
+                )
+
+            await self.input_and_send(page, input_sel, task.data)
+
+            if not await self.wait_for_image_ready(page):
+                return Result(success=False, error="Image generation timeout")
+
+            img_data = await self.download_image(page)
+            if not img_data:
+                return Result(success=False, error="Failed to download image")
+
+            if task.output_path:
+                task.output_path.write_bytes(img_data)
+                remove_gemini_watermark(task.output_path)
+
+            return Result(success=True)
+
+        except Exception as e:
+            return Result(success=False, error=str(e))
+
     # ── Page setup ────────────────────────────────────────────────────
 
     async def navigate_and_wait(self, page) -> Optional[str]:
@@ -63,7 +105,7 @@ class GeminiHandler(Handler):
 
     async def wait_for_input_box(self, page, timeout: int = 15_000) -> Optional[str]:
         """Wait for input box. Returns working selector or None."""
-        selectors = [CHAT_INPUT_SELECTOR, '.ql-editor', 'div[contenteditable="true"]']
+        selectors = [CHAT_INPUT_SELECTOR, ".ql-editor", 'div[contenteditable="true"]']
 
         # Quick check — may already be in DOM
         for sel in selectors:
@@ -86,7 +128,7 @@ class GeminiHandler(Handler):
 
     async def click_tools_button(self, page) -> bool:
         """Click the tools button to open the tools drawer."""
-        for sel in TOOLS_BTN_SEL.split(','):
+        for sel in TOOLS_BTN_SEL.split(","):
             sel = sel.strip()
             if not sel:
                 continue
@@ -120,7 +162,7 @@ class GeminiHandler(Handler):
 
     async def click_make_image_chip(self, page) -> bool:
         """Click the '制作图片' chip in the tools drawer."""
-        for sel in MAKE_IMAGE_CHIP_SEL.split(','):
+        for sel in MAKE_IMAGE_CHIP_SEL.split(","):
             sel = sel.strip()
             if not sel:
                 continue
@@ -181,7 +223,7 @@ class GeminiHandler(Handler):
         # For newlines: press Enter creates a new paragraph in the editor,
         # but would also submit. Instead, use Shift+Enter which inserts a
         # line break without submitting.
-        lines = enhanced.split('\n')
+        lines = enhanced.split("\n")
         for i, line in enumerate(lines):
             if line:
                 await page.keyboard.type(line, delay=5)
@@ -278,43 +320,3 @@ class GeminiHandler(Handler):
         if b64:
             return base64.b64decode(b64)
         return None
-
-    # ── Main execution flow ──────────────────────────────────────────
-
-    async def execute(self, ctx: Context) -> Result:
-        """Generate image - full implementation."""
-        task = ctx.task
-        page = ctx.page
-
-        try:
-            input_sel = await self.navigate_and_wait(page)
-            if not input_sel:
-                return Result(success=False, error="Session expired or page not ready")
-
-            if not await self.click_tools_button(page):
-                return Result(success=False, error="Failed to click tools button")
-
-            if not await self.click_make_image_chip(page):
-                return Result(success=False, error="Failed to click make image chip")
-
-            input_sel = await self.wait_for_input_box(page, timeout=15_000)
-            if not input_sel:
-                return Result(success=False, error="Input box not found after clicking make image")
-
-            await self.input_and_send(page, input_sel, task.data)
-
-            if not await self.wait_for_image_ready(page):
-                return Result(success=False, error="Image generation timeout")
-
-            img_data = await self.download_image(page)
-            if not img_data:
-                return Result(success=False, error="Failed to download image")
-
-            if task.output_path:
-                task.output_path.write_bytes(img_data)
-                remove_gemini_watermark(task.output_path)
-
-            return Result(success=True)
-
-        except Exception as e:
-            return Result(success=False, error=str(e))
