@@ -1,5 +1,6 @@
 """Simple task model for browser automation."""
 
+import json
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -49,6 +50,9 @@ class Task:
         """Convert to dict for JSON serialization."""
         result = asdict(self)
         result["status"] = self.status.value
+        # Convert Path to string for JSON serialization
+        if self.output_path is not None:
+            result["output_path"] = str(self.output_path)
         return result
 
     @classmethod
@@ -57,6 +61,9 @@ class Task:
         data = dict(data)  # copy
         data["status"] = TaskStatus(data.pop("status"))
         extra = data.pop("extra", {})
+        # Convert string back to Path for output_path
+        if data.get("output_path"):
+            data["output_path"] = Path(data["output_path"])
         task = cls(**data)
         task.extra = extra
         return task
@@ -65,11 +72,7 @@ class Task:
     def from_file(cls, path: Path) -> "Task":
         """Create task from markdown prompt file."""
         content = path.read_text(encoding="utf-8")
-        # Clean markdown
-        import re
 
-        # 去除 Markdown 标题符号
-        # content = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)
         # 去除粗体/斜体符号
         content = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", content)
         # 去除首尾空白
@@ -119,16 +122,12 @@ class TaskStore:
 
     def _load(self) -> None:
         """Load from JSON."""
-        import json
-
         if self.json_file.exists() and self.json_file.stat().st_size > 0:
             data = json.loads(self.json_file.read_text(encoding="utf-8"))
             self._tasks = {k: Task.from_dict(v) for k, v in data.items()}
 
     def _save(self) -> None:
         """Save to JSON."""
-        import json
-
         self.json_file.parent.mkdir(parents=True, exist_ok=True)
         data = {k: v.to_dict() for k, v in self._tasks.items()}
         self.json_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
